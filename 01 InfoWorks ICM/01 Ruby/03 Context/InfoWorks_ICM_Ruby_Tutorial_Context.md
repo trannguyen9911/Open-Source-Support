@@ -1,0 +1,1083 @@
+# InfoWorks ICM Ruby Tutorial Context for AI/LLM Code Generation
+
+**Last Updated:** July 7, 2026
+
+**Load Priority:** LEARNING - Load for complete examples and workflows  
+**Load Condition:** CONDITIONAL - When user asks "how to" or requests complete script
+
+## **About This Document**
+
+This is a **tutorial-style context guide** for learning InfoWorks ICM Ruby scripting.
+
+**For LLMs:** Use this file to:
+- Understand complete workflows from start to finish
+- See how multiple patterns combine to solve real problems
+- Learn InfoWorks concepts (transactions, version control, tracing)
+- Find Exchange-specific workflows (database operations, simulation launching)
+
+**Prerequisite:** Read `InfoWorks_ICM_Ruby_Lessons_Learned.md` FIRST to avoid critical mistakes
+
+**Related Files:**
+- `InfoWorks_ICM_Ruby_Lessons_Learned.md` - **CRITICAL** Read FIRST - Critical gotchas
+- `InfoWorks_ICM_Ruby_API_Reference.md` - Method documentation
+- `InfoWorks_ICM_Ruby_Pattern_Reference.md` - Code templates used in examples
+- `InfoWorks_ICM_Ruby_Database_Reference.md` - Table names and types referenced here
+- `InfoWorks_ICM_Ruby_Database_Fields_Guide.md` - Field name lookup workflow
+- `InfoWorks_ICM_Ruby_Glossary.md` - Terminology used in workflows
+
+---
+
+## Overview
+InfoWorks ICM provides two main Ruby scripting environments:
+1. **UI Scripts**: Run within the InfoWorks ICM graphical interface (`WSApplication.current_network`)
+2. **Exchange Scripts**: Run independently via Exchange API (`WSApplication.open`)
+
+## InfoWorks-Specific Limitations and Behaviors
+
+### Console Input Does NOT Work (Critical)
+**Standard Ruby console input methods fail in InfoWorks ICM:**
+```ruby
+# INVALID - These don't work in ICM:
+input = gets.chomp      # Returns nil immediately
+input = STDIN.gets      # Returns nil immediately
+args = ARGV             # Always empty in UI scripts
+input = readline        # Not available
+
+# CORRECT - Use ICM-specific method in UI scripts:
+values = WSApplication.prompt('Enter Parameters', [
+  ['Node ID', 'STRING', 'MH001'],
+  ['Depth', 'NUMBER', 1.5, 2]
+])
+exit if values.nil?  # User cancelled
+
+# CORRECT - In Exchange scripts, use config files or ENV vars:
+config = File.read('config.txt').strip if File.exist?('config.txt')
+db_path = ENV.fetch('ICM_DB_PATH', 'default.icmm')
+# See Pattern Reference: PAT_USER_INPUT_043
+```
+
+### Script File Paths - Working Directory Unreliable
+**Standard Ruby path methods behave inconsistently:**
+```ruby
+# UNRELIABLE - Working directory varies between UI and Exchange:
+script_path = __FILE__          # Different in UI vs Exchange
+working_dir = Dir.pwd           # Unpredictable location
+relative = 'data/file.csv'      # May not resolve correctly
+
+# Use ICM-specific method
+script_file = WSApplication.script_file
+script_dir = File.dirname(script_file)
+config_file = File.join(script_dir, 'config.cfg')
+
+# Use absolute paths
+output_file = 'C:/Output/results.csv'  # Explicit and reliable
+# See Pattern Reference: PAT_FILE_PATH_044
+```
+
+### External Gems NOT Available
+**InfoWorks ICM uses embedded Ruby 2.4.0 without gem support:**
+```ruby
+# CANNOT USE external gems:
+require 'nokogiri'   # Will fail
+require 'httparty'   # Will fail
+require 'sqlite3'    # Will fail
+
+# CAN USE standard library:
+require 'csv'
+require 'json'
+require 'date'
+require 'set'
+require 'fileutils'
+
+# Load local .rb files
+require File.join(script_dir, 'utilities.rb')
+```
+
+### DateTime in Simulations
+```ruby
+# Absolute times: DateTime.new(2024, 1, 1, 12, 0)
+# Relative times: Negative seconds (e.g., -3600.0 for T-1 hour)
+
+timesteps = net.list_timesteps
+if timesteps.first.is_a?(DateTime)
+  puts "Absolute time: #{timesteps.first.strftime('%Y-%m-%d %H:%M')}"
+else
+  puts "Relative time: #{timesteps.first} seconds"
+end
+```
+
+### Results Field Naming
+```ruby
+# Results use specific field codes (not UI names):
+# Common InfoWorks results fields:
+# - 'depnod' = Node depth
+# - 'qlink' = Link flow
+# - 'vlink' = Link velocity  
+# - 'level' = Node level
+# - 'flood' = Node flooding
+
+node.results('depnod')  # Get depth results
+link.results('qlink')   # Get flow results
+```
+
+## Quick Reference for AI Code Generation
+
+### When to Use UI vs Exchange Scripts
+- **UI Scripts**: Interactive network analysis, real-time data modification, working with current selection
+- **Exchange Scripts**: Automated processing, simulation management, batch operations, database operations
+
+### Key Decision Points for Script Generation
+1. **Data Modification**: Always use transactions (`net.transaction_begin` / `net.transaction_commit`)
+2. **Object Selection**: Check if objects are selected first, fall back to all objects if none selected
+3. **Network Tracing**: Use `_seen` flags to prevent infinite loops, clean up afterwards
+4. **Error Handling**: Wrap operations in begin/rescue blocks
+5. **Results Access**: Access results from `current_network`; use `background_network` only for comparing two simulations
+
+### Most Common Script Patterns
+1. **Bulk Property Updates**: Modify multiple objects with transaction handling
+2. **Network Tracing**: Trace upstream/downstream connections from selected objects
+3. **Relationship Analysis**: Find connections between subcatchments, land uses, and runoff surfaces
+4. **Data Export**: Export object properties and results to CSV files
+5. **Selection Management**: Create selections based on criteria or relationships
+
+---
+
+## Core Architecture
+
+### Application Access (see PAT_APP_ACCESS_001, PAT_UNIVERSAL_MODE_002)
+```ruby
+# UI Scripts
+net = WSApplication.current_network
+
+# Exchange Scripts
+db = WSApplication.open('path\\to\\database.icmm', false)
+mo = db.model_object_from_type_and_id('Model Network', network_id)
+net = mo.open
+
+# Universal pattern (works in both)
+net = WSApplication.ui? ? WSApplication.current_network : 
+      (db = WSApplication.open('database.icmm', false); db.model_object_from_type_and_id('Model Network', 1).open)
+```
+
+### Network and Model Objects
+```ruby
+# Get model object from network
+mo = net.model_object
+
+# Access by Type and ID - see Database Reference for complete Type list
+group = db.model_object_from_type_and_id('Model Group', group_id)
+network = db.model_object_from_type_and_id('Model Network', network_id)
+```
+
+**See:** `InfoWorks_ICM_Ruby_Database_Reference.md` for complete Model Object Type names and ShortCodes.
+
+## Data Access Patterns (see PAT_DATA_FETCH_004)
+
+### Row Objects
+```ruby
+# Single object
+node = net.row_object('hw_node', 'NODE_ID')
+return if node.nil?  # Always check for nil
+
+# Multiple objects
+net.row_objects('hw_node').each do |node|
+  puts "#{node.node_id}: #{node.x}, #{node.y}"
+end
+
+# Selected objects only (see PAT_SELECTION_FALLBACK_007)
+selected = net.row_objects_selection('hw_node')
+selected = net.row_objects('hw_node') if selected.empty?  # Fallback to all
+```
+
+### Database Table Names
+
+**See:** `InfoWorks_ICM_Ruby_Database_Reference.md` for complete table name listings.
+
+**Special collection names:** `_nodes`, `_links`, `_subcatchments` (for selections)
+
+## Data Modification Patterns (see PAT_TRANSACTION_010, PAT_BULK_MODIFY_011)
+
+### Transaction Management - ALWAYS Required
+```ruby
+net.transaction_begin
+begin
+  node.ground_level = 100.0
+  node.write
+rescue => e
+  puts "Error: #{e}"
+ensure
+  net.transaction_commit
+end
+net.commit("Modified ground levels")
+```
+
+### Object Property Modification
+```ruby
+# Modify and write
+node.ground_level = 100.0
+node.user_text_1 = "Custom"
+node.write  # Critical!
+
+# Dynamic field access (see PAT_DYNAMIC_FIELD_ACCESS_032)
+land_use["runoff_index_1"] = "GRASS"
+```
+
+### Complex Objects - WSStructure (see PAT_STRUCTURE_UPDATE_012)
+```ruby
+# River reach sections
+reach.sections.each do |section|
+reach.sections.write
+reach.write
+```
+
+### WSStructure Handling (see PAT_STRUCTURE_UPDATE_012)
+```ruby
+# Convert WSStructure to Array for processing
+def structure_to_array(structure)
+  return [] unless structure.is_a?(WSStructure)
+  
+  result = []
+  (0...structure.length).each do |i|
+    row_data = {}
+    structure[i].table_info.fields.each do |field|
+      row_data[field.name] = structure[i][field.name]
+    end
+    result << row_data
+  end
+  result
+end
+
+# Update WSStructure from Array
+def update_structure_from_array(structure, data_array)
+  raise "Structure is not a WSStructure" unless structure.is_a?(WSStructure)
+  raise "Data is not an Array" unless data_array.is_a?(Array)
+  
+  structure.length = data_array.length
+  data_array.each_with_index do |data_hash, i|
+    struct_row = structure[i]
+    data_hash.each { |key, value| struct_row[key] = value }
+  end
+  structure.write
+end
+```
+
+## Selection and Navigation (see PAT_SELECTION_CLEAR_008, PAT_TRACE_BASIC_014)
+
+### Selection Management
+```ruby
+net.clear_selection  # Always clear first
+node.selected = true
+if node.selected?
+  # Process selected
+end
+```
+
+### Network Navigation
+```ruby
+# Node relationships
+node.us_links.each { |link| puts link.id }
+node.ds_links.each { |link| puts link.id }
+
+# Link relationships  
+link.us_node  # upstream node
+link.ds_node  # downstream node
+```
+
+### Network Tracing (see PAT_TRACE_BASIC_014, PAT_TRACE_CONDITIONAL_015, PAT_TRACE_RESET_016)
+```ruby
+# Basic downstream trace
+unprocessed = []
+node.ds_links.each do |link|
+  link._seen = true
+  unprocessed << link
+end
+
+while unprocessed.size > 0
+  link = unprocessed.shift
+  link.selected = true
+  ds_node = link.ds_node
+  next unless ds_node && !ds_node._seen
+  
+  ds_node._seen = true
+  ds_node.selected = true
+  ds_node.ds_links.each do |next_link|
+    next if next_link._seen
+    next_link._seen = true
+    unprocessed << next_link
+  end
+end
+
+# Always clean up _seen flags after tracing!
+net.row_objects('_links').each { |o| o._seen = false }
+net.row_objects('_nodes').each { |o| o._seen = false }
+```
+
+**For conditional/filtered tracing:** See PAT_TRACE_CONDITIONAL_015 in Pattern Reference
+
+## Simulation Management (Exchange Only)
+
+### Launching Simulations (see PAT_SIM_RUN_021)
+```ruby
+# Connect to local agent first
+WSApplication.connect_local_agent(1000)  # 1000ms timeout
+
+# Get run and sim objects
+run_mo = db.model_object_from_type_and_id('Run', run_id)
+sim_mo = db.model_object_from_type_and_id('Sim', sim_id)
+
+# Launch with agent
+working_dir = 'C:/Temp'
+agent_id = 1
+job_id = sim_mo.run_ex(working_dir, agent_id)
+
+# Wait for completion
+WSApplication.wait_for_jobs(job_id)
+
+# Check results
+if sim_mo.status == 'Complete'
+  puts "Simulation completed successfully"
+else
+  puts "Simulation failed: #{sim_mo.status}"
+end
+```
+
+## Results Handling (see PAT_RESULTS_ACCESS_018, PAT_RESULTS_FIELDS_ENUM_019)
+
+### Accessing Results
+```ruby
+net = WSApplication.current_network  # Results always from current network
+timesteps = net.list_timesteps
+
+# Get results - InfoWorks (use field codes not UI names)
+net.row_objects('hw_node').each do |node|
+  depth_results = node.results('depnod')  # 'depnod' = depth at node
+  puts "#{node.id}: Max=#{depth_results.max}, Mean=#{depth_results.mean}"
+end
+
+# Get results - SWMM
+net.row_objects('sw_node').each do |node|
+  depth = node.results('DEPTH')
+  flooding = node.results('FLOODING')
+  puts "#{node.node_id}: Depth=#{depth.max}, Flood=#{flooding.max}"
+end
+
+# Iterate timesteps
+timesteps.each_with_index do |ts, i|
+  value = node.results('depnod')[i]
+end
+```
+
+### Common Result Fields
+**InfoWorks (hw_) Networks:**
+- **Links/Conduits**: `us_flow`, `ds_flow`, `us_depth`, `ds_depth`, `us_vel`, `ds_vel`, `us_froude`, `ds_froude`, `us_totalhead`, `ds_totalhead`, `volume`, `qlink`, `HYDGRAD`
+- **Nodes**: `depnod` (depth at node), `qnode` (flow at node), `qinfnod` (inflow), `qrain` (rainfall inflow), `flooddepth`, `floodvolume`, `dmaxd` (maximum depth)
+- **2D Results**: `twoddepnod`, `twodflow`, `twodfloodflow`
+- **Surcharging**: `Surcharge`, `maxsurchargestate`
+
+**SWMM (sw_) Networks:**
+- **Links**: `FLOW`, `VELOCITY`, `DEPTH`, `VOLUME`, `CAPACITY` (fraction full)
+- **Nodes**: `DEPTH`, `HEAD`, `VOLUME`, `LATERAL_INFLOW`, `TOTAL_INFLOW`, `FLOODING`, `PRESSURE`
+- **Subcatchments**: `RAINFALL`, `RAINDPTH`, `RUNOFF`, `EVAP`, `INFIL`
+
+**See:** PAT_RESULTS_FIELDS_ENUM_019 for field discovery pattern
+
+### Results Field Discovery
+```ruby
+require 'set'
+
+# Discover available results fields for a table
+net = WSApplication.current_network
+results_set = Set.new
+
+net.row_object_collection('hw_node').each do |node|
+  next unless node.table_info.results_fields
+  
+  node.table_info.fields.each do |field|
+    results_set << field.name
+  end
+end
+
+puts "Available results fields: #{results_set.to_a}"
+```
+
+### Iterating Selected Objects
+
+```ruby
+# Convenience method for processing selected objects
+net.each_selected do |selected_obj|
+  # selected_obj is a reference, get actual row object
+  node = net.row_object('hw_node', selected_obj.node_id)
+  
+  # Process the node
+  puts "#{node.node_id}: Level = #{node.ground_level}"
+end
+
+# Equivalent to:
+selected = net.row_object_collection_selection('_nodes')
+selected.each do |node|
+  puts "#{node.node_id}: Level = #{node.ground_level}"
+end
+```
+
+### Comparing Simulations
+```ruby
+cn = WSApplication.current_network      # Current simulation
+bn = WSApplication.background_network   # Background simulation
+
+cn.row_objects('hw_node').each do |cn_node|
+  bn_node = bn.row_object('hw_node', cn_node.id)
+  next if bn_node.nil?
+  
+  diff = cn_node.results('depnod').max - bn_node.results('depnod').max
+  puts "#{cn_node.id}: Difference = #{diff.round(3)}"
+end
+```
+  node.table_info.fields.each do |field|
+    results_set << field.name
+  end
+end
+
+puts "Available results fields: #{results_set.to_a}"
+
+# Compare results between current and background networks
+cn = WSApplication.current_network
+bn = WSApplication.background_network
+
+cn.row_objects('hw_node').each do |cn_node|
+  bn_node = bn.row_object('hw_node', cn_node.id)
+  next if bn_node.nil?
+  
+  cn_result = cn_node.results('depnod').max
+  bn_result = bn_node.results('depnod').max
+  
+  puts "Node #{cn_node.id}: Current=#{cn_result}, Background=#{bn_result}"
+end
+```
+
+## Simulation Management (Exchange Only - see PAT_SIM_RUN_021)
+```ruby
+# Create simulation run
+group = db.model_object('>MODG~Model group')
+run_params = Hash.new
+run_params['Duration'] = 24*60  # minutes
+run_params['DurationUnit'] = 'Minutes'
+run_params['TimeStep'] = 1
+run_params['Level'] = '>MODG~Model group>LEV~Level'
+
+run = group.new_run(
+  "Run Name",
+  'MODG~Model Group>NNET~Model network',
+  nil,  # commit ID
+  1,    # rainfall event ID
+  nil,
+  run_params
+)
+
+# Launch simulation
+sim = run.children[0]
+WSApplication.connect_local_agent(1000)
+handles = WSApplication.launch_sims([sim], '.', false, 0, 0)
+
+# Wait for completion
+while sim.status == 'None'
+  sleep 1
+end
+```
+
+## Data Import/Export (see PAT_EXPORT_ODEC_022, PAT_FILE_WRITE_CSV_023)
+
+### ODEC Export
+```ruby
+# Basic ODEC export
+options = Hash.new
+options['Error File'] = './export_errors.txt'
+
+net.odec_export_ex(
+  'CSV',                    # format
+  './config.cfg',          # config file
+  options,                 # options hash
+  'hw_node',               # table name
+  'exported_nodes.csv'     # output file
+)
+
+# Advanced ODEC Configuration
+def configure_odec_export(format, config_file, export_options = {})
+  options = {
+    'Error File' => './export_errors.txt',
+    'Coordinate System' => 'Grid',
+    'Use Display Precision' => true,
+    'Export Only Selected' => false,
+    'Include Images' => false,
+    'Include Videos' => false
+  }.merge(export_options)
+  
+  # Format-specific options
+  case format.upcase
+  when 'CSV'
+    options['Delimiter'] = ','
+    options['Units Row'] = true
+    options['Title Row'] = true
+  when 'MIF'
+    options['Coordinate System'] = 'Grid'
+    options['Export WKT'] = true
+  when 'SHP'
+    options['Include NULL Fields'] = false
+  end
+  
+  options
+end
+```
+
+### CSV Export
+```ruby
+require 'csv'
+
+# Simple CSV export
+CSV.open('results.csv', 'w') do |csv|
+  csv << ['Node ID', 'X', 'Y', 'Ground Level']
+  net.row_objects('hw_node').each do |node|
+    csv << [node.node_id, node.x, node.y, node.ground_level]
+  end
+end
+
+# Export with date formatting
+require 'date'
+CSV.open('results.csv', 'w') do |csv|
+  csv << ['Node ID', 'Max Depth', 'Timestamp']
+  net.row_objects('hw_node').each do |node|
+    depth = node.results('depnod').max
+    csv << [node.node_id, depth.round(3), Time.now.strftime('%Y-%m-%d %H:%M:%S')]
+  end
+end
+```
+
+**See:** Pattern Reference for complete ODEC and export patterns
+
+## Utility Functions and Patterns
+
+### Distance Calculations and Spatial Operations
+```ruby
+# Calculate distance between points
+def distance(x1, y1, x2, y2)
+  Math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+end
+
+# Find nearest node to subcatchment
+min_distance = Float::INFINITY
+nearest_node = nil
+
+nodes.each do |node|
+  dist = distance(subcatchment.x, subcatchment.y, node.x, node.y)
+  if dist < min_distance
+    min_distance = dist
+    nearest_node = node
+  end
+end
+
+# Find objects within buffer distance
+def find_objects_within_buffer(net, table_name, center_x, center_y, buffer_distance)
+  nearby_objects = []
+  
+  net.row_objects(table_name).each do |obj|
+    next unless obj.x && obj.y
+    
+    distance = Math.sqrt((center_x - obj.x)**2 + (center_y - obj.y)**2)
+    nearby_objects << obj if distance <= buffer_distance
+  end
+  
+  nearby_objects
+end
+```
+
+### GUID Generation
+```ruby
+require 'Win32API'
+
+# Create unique identifiers
+uuid_create = Win32API.new('rpcrt4', 'UuidCreate', 'P', 'L')
+def new_guid
+  result = ' ' * 16
+  uuid_create.call(result)
+  a, b, c, d, e, f, g, h = result.unpack('SSSSSSSS')
+  sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X', a, b, c, d, e, f, g, h)
+end
+```
+
+### Table and Field Discovery
+```ruby
+# List all tables in network
+net.tables.each do |table|
+  puts "Table: #{table.name}"
+  
+  # List fields in table
+  table.fields.each do |field|
+    puts "  Field: #{field.name} (#{field.data_type})"
+  end
+end
+```
+
+### Batch Processing with Progress Tracking
+```ruby
+def batch_process_objects(objects, batch_size = 100)
+  total = objects.length
+  processed = 0
+  
+  objects.each_slice(batch_size) do |batch|
+    batch.each do |obj|
+      yield(obj) if block_given?
+      processed += 1
+    end
+    
+    puts "Progress: #{processed}/#{total} (#{(processed.to_f/total*100).round(1)}%)"
+  end
+end
+
+# Usage
+batch_process_objects(net.row_objects('hw_node'), 50) do |node|
+  node.user_text_1 = "Processed"
+  node.write
+end
+```
+
+### Dynamic Field Access and Iteration
+```ruby
+# Access fields dynamically using bracket notation
+(1..10).each do |i|
+  runoff_surface = land_use["runoff_index_#{i}"]
+  if !runoff_surface.nil?
+    puts "Found runoff surface: #{runoff_surface}"
+  end
+end
+
+# Iterate through land use runoff surfaces
+land_use_obj = net.row_object('hw_land_use', 'GRASS')
+(1..12).each do |month|
+  runoff_value = land_use_obj["runoff_index_#{month}"]
+  puts "Month #{month}: #{runoff_value}"
+end
+```
+
+### Hash-based Object Tracking
+```ruby
+# Common pattern for tracking objects using hashes
+selected_objects = Hash.new
+processed_objects = Hash.new
+
+# Add objects to hash for fast lookup
+net.row_objects_selection('hw_runoff_surface').each do |obj|
+  selected_objects[obj.id.to_s] = obj
+end
+
+# Check if object is in hash (O(1) lookup)
+if selected_objects.has_key?(object_id.to_s)
+  # Process object
+  obj = selected_objects[object_id.to_s]
+end
+```
+
+### Scenario Management
+```ruby
+# Set current scenario
+net.current_scenario = 'Base Scenario'
+puts net.current_scenario
+
+# Work with different scenarios
+net.current_scenario = 'Modified Scenario'
+net.transaction_begin
+# make changes
+net.transaction_commit
+net.commit("Changes for modified scenario")
+```
+
+## Script Templates
+
+### Selection-Based Processing (see PAT_SELECTION_FALLBACK_007)
+```ruby
+net = WSApplication.current_network
+selected = net.row_objects_selection('_nodes')
+objects = selected.empty? ? net.row_objects('hw_node') : selected
+objects.each { |obj| puts obj.id }
+```
+
+### Bulk Modification (see PAT_BULK_MODIFY_011, PAT_TRANSACTION_010)
+```ruby
+net.transaction_begin
+count = 0
+net.row_objects('hw_node').each do |node|
+  node.user_text_1 = "Modified"
+  node.write
+  count += 1
+end
+net.transaction_commit
+net.commit("Modified #{count} nodes")
+```
+
+### Script Initialization (see PAT_SCRIPT_INIT_003)
+```ruby
+require 'csv'
+require 'date'
+require 'set'
+
+begin
+  net = WSApplication.current_network
+  puts "Script started: #{Time.now}"
+  puts "Network: #{net.model_object.name}"
+  
+  # Main logic here
+  
+  puts "Completed: #{Time.now}"
+rescue => e
+  puts "Error: #{e.message}"
+  puts e.backtrace.join("\n") if e.backtrace
+end
+```
+
+### Relationship Discovery
+```ruby
+# Build relationship map between objects
+related_objects = Hash.new
+
+# Find subcatchments connected to each node
+net.row_objects('hw_node').each do |node|
+  related_objects[node.id.to_s] = Array.new
+  
+  net.row_objects('hw_subcatchment').each do |subcatch|
+    if subcatch.node_id == node.node_id
+      related_objects[node.id.to_s] << subcatch
+    end
+  end
+end
+
+# Use relationship map
+related_objects.each do |node_id, subcatchments|
+  puts "Node #{node_id} has #{subcatchments.length} connected subcatchments"
+end
+```
+
+## Object ID Field Names
+Different objects use different ID field names:
+```ruby
+node.node_id          # hw_node display ID
+conduit.us_node_id    # Upstream node
+conduit.ds_node_id    # Downstream node
+subcatchment.id       # Internal ID
+land_use.land_use_id  # Display ID
+```
+
+**User fields:** `user_text_1` to `user_text_10`, `user_number_1` to `user_number_10`
+
+---
+
+## Exchange Workflows
+
+Exchange scripts run **without the UI**, operating directly on databases and model objects. They enable automation, batch processing, and integration with external systems.
+
+### UI vs Exchange Comparison
+
+| Feature | UI Scripts | Exchange Scripts |
+|---------|-----------|------------------|
+| **Environment** | Runs inside ICM application | Standalone command-line executable |
+| **Network Access** | `WSApplication.current_network` | `db.model_object(...).open` |
+| **Database Operations** | Cannot open/close databases | Full database control |
+| **Tree Objects** | Selection lists only | Model Groups, Networks, Runs, etc. |
+| **Simulations** | Cannot create/launch runs | Full run setup and execution |
+| **User Dialogs** | `WSApplication.prompt(...)` | No interactive dialogs |
+| **Version Control** | Commit/revert changes | Full VC capabilities |
+| **Performance** | Interactive speed | Batch processing optimized |
+
+### Database Operations (see PAT_EXC_DB_OPEN_052)
+
+**Opening Databases:**
+```ruby
+# Standalone database (local file)
+db = WSApplication.open('D:/Models/MainModel.icmm', false)  # false = read-only
+db = WSApplication.open('D:/Models/MainModel.icmm', true)   # true = read-write
+
+# Workgroup database (server)
+db = WSApplication.open('icm-server:40000/ProductionDB', false)
+
+# Workgroup with version
+db = WSApplication.open('icm-server:40000/ProductionDB', '2024.0')
+
+# Workgroup in group path
+db = WSApplication.open('icm-server:40000/Projects/District3', false)
+```
+
+**Working with Model Objects:**
+```ruby
+# Access by type and ID
+network = db.model_object_from_type_and_id('Model Network', 15)
+rainfall = db.model_object_from_type_and_id('Rainfall Event', 8)
+run = db.model_object_from_type_and_id('Run', 42)
+
+# Access by scripting path (using ShortCode~Name format)
+model_group = db.model_object('>MODG~Scenarios')
+network = db.model_object('>MODG~Scenarios>NNET~Proposed 2025')
+
+# Navigate tree structure
+parent_type = network.parent_type        # Returns 'Model Group'
+parent_id = network.parent_id            # Returns parent ID
+parent = db.model_object_from_type_and_id(parent_type, parent_id)
+
+# List children
+run.children.each do |sim|
+  puts "Sim: #{sim.id}, Status: #{sim.status}"
+end
+
+# Open network for editing
+net = network.open                       # Returns WSOpenNetwork
+# ... make changes ...
+net.commit('Exchange batch update')
+net.close
+```
+
+### InfoWorks Run Setup (see PAT_EXC_RUN_SETUP_053)
+
+**Create run with new_run method:**
+```ruby
+db = WSApplication.open('D:/Models/Sewer.icmm', false)
+
+# Get model group (runs MUST be created in groups)
+run_group = db.model_object('>MODG~2024 Analysis')
+
+# Get network and rainfall
+network_mo = db.model_object_from_type_and_id('Model Network', 10)
+rainfall_mo = db.model_object_from_type_and_id('Rainfall Event', 5)
+
+# Create run with key parameters
+run = run_group.new_run(
+  'Design Storm Jan 2024',               # Name (must be unique)
+  network_mo,                             # Network (object, ID, or path)
+  nil,                                    # Commit ID (nil = latest)
+  rainfall_mo,                            # Rainfall (object, ID, path, or array)
+  nil,                                    # Scenarios (nil = base, or array)
+  {                                       # Parameters hash (see table below)
+    'RunType' => 'Hydraulic',
+    'Duration' => 14400,                  # 4 hours in seconds
+    'Timestep' => 30,                     # 30 seconds
+    'ResultsTimestep' => 300              # 5 minutes
+  }
+)
+
+# Access created simulations
+run.children.each do |sim|
+  puts "Created sim ID: #{sim.id}"
+end
+```
+
+**Multiple events and scenarios:**
+```ruby
+# Arrays create multiple sims (cartesian product)
+rainfalls = [
+  db.model_object_from_type_and_id('Rainfall Event', 5),
+  db.model_object_from_type_and_id('Rainfall Event', 7)
+]
+scenarios = ['Existing', 'Proposed', 'Ultimate']
+
+run = run_group.new_run(
+  'Multi-Event Analysis',
+  network_mo,
+  nil,
+  rainfalls,    # 2 events
+  scenarios,    # 3 scenarios
+  params        # Creates 6 sims (2×3)
+)
+```
+
+### SWMM Run Setup (see PAT_EXC_RUN_SETUP_SWMM_054)
+
+**Create run with builder pattern:**
+```ruby
+db = WSApplication.open('D:/Models/SWMM_Model.icmm', false)
+
+# Create builder and new run
+builder = WSSWMMRunBuilder.new
+builder.create_new_run(5)                # Model group ID
+
+# Configure run
+builder['Title'] = '100yr Design Event'
+builder['Network'] = 12                  # Network ID
+builder['NetworkCommitID'] = nil         # nil = latest
+
+# Date/time
+builder['StartDateTime'] = DateTime.new(2024, 7, 15, 0, 0)
+builder['EndDateTime'] = DateTime.new(2024, 7, 16, 0, 0)
+
+# SWMM parameters
+builder['RainfallEvent'] = 8             # Rainfall event ID
+builder['AllowPonding'] = true
+builder['SkipSteadyState'] = true
+builder['ReportStep'] = 300              # seconds
+builder['RoutingStep'] = 30              # seconds
+
+# Save and access
+run_mo = builder.save
+sim = run_mo.children[0]
+puts "Created SWMM sim: #{sim.id}"
+```
+
+### Critical Run Parameters (InfoWorks)
+
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `RunType` | String | Simulation type | `'Hydraulic'`, `'WaterQuality'` |
+| `Duration` | Integer | Run duration (seconds) | `14400` (4 hours) |
+| `Timestep` | Integer | Calculation timestep (seconds) | `30`, `60` |
+| `ResultsTimestep` | Integer | Results output interval (seconds) | `300` (5 min) |
+| `MinTimeStep` | Float | Minimum adaptive timestep | `0.5` |
+| `MaxTimeStep` | Float | Maximum adaptive timestep | `30.0` |
+| `WaterQuality` | Boolean | Enable WQ simulation | `true`, `false` |
+| `CalculateModes` | String | Flow mode calculation | `'Normal'`, `'Extended'` |
+| `InitialLosses` | String | Initial loss method | `'Model'`, `'Run'` |
+| `2DMethod` | String | 2D solver | `'Implicit'`, `'Explicit'` |
+| `UseREG` | Boolean | Use regulators | `true`, `false` |
+| `ThresholdArea` | Float | Min flood area (m²) | `0.01` |
+
+**See Exchange.pdf Appendix 2 for complete parameter list (130+ parameters).**
+
+### Launch and Monitor Simulations (see PAT_LAUNCH_SIM_050)
+
+```ruby
+# Connect to agent
+WSApplication.connect_local_agent(1000)  # 1000ms timeout
+
+# Get sim and launch
+sim = db.model_object_from_type_and_id('Sim', 2608)
+working_dir = 'D:/ICM_Results'
+agent_id = 1                             # Local agent
+job_id = sim.run_ex(working_dir, agent_id)
+
+puts "Launched job: #{job_id}"
+
+# Wait for completion
+WSApplication.wait_for_jobs(job_id)
+
+# Check result
+case sim.status
+when 'Complete'
+  puts "Simulation successful"
+  
+  # Access results (see PAT_RESULTS_PATH_051)
+  results_file = sim.results_path        # Returns .iwr FILE path
+  results_dir = File.dirname(results_file)
+  log_file = File.join(results_dir, "SIM#{sim.id}.log")
+  
+  # Open with results loaded
+  net_with_results = sim.open
+  # ... analyze results ...
+  net_with_results.close
+  
+when 'Failed'
+  puts "Simulation failed - check log"
+else
+  puts "Status: #{sim.status}"
+end
+```
+
+### Data Import/Export with ODIC/ODEC (see PAT_EXC_ODIC_IMPORT_055, PAT_EXC_ODEC_EXPORT_056)
+
+**Import with error handling:**
+```ruby
+require 'FileUtils'
+
+db = WSApplication.open('D:/Model.icmm', true)  # true = read-write
+net_mo = db.model_object_from_type_and_id('Model Network', 5)
+net = net_mo.open
+
+# Define imports
+imports = [
+  {table: 'Node', file: 'D:/Data/nodes.csv'},
+  {table: 'Conduit', file: 'D:/Data/conduits.csv'}
+]
+
+# Import with error tracking
+error_files = []
+
+imports.each do |spec|
+  error_file = "D:/Temp/err_#{spec[:table]}.txt"
+  FileUtils.rm(error_file) if File.exist?(error_file)
+  
+  params = {
+    'Error File' => error_file,
+    'Units Behaviour' => 'User',
+    'Duplication Behaviour' => 'Merge'
+  }
+  
+  net.odic_import_ex('CSV', 'D:/Config/import.cfg', params,
+                     spec[:table], spec[:file])
+  
+  error_files << error_file if File.exist?(error_file) && File.size(error_file) > 0
+end
+
+# Report errors
+if error_files.any?
+  error_files.each { |f| puts File.read(f) }
+else
+  net.commit('Imported external data')
+  puts "Import successful"
+end
+
+net.close
+```
+
+**Export multiple formats:**
+```ruby
+net = db.model_object_from_type_and_id('Model Network', 5).open
+
+# Export to CSV (2 params per table)
+net.odec_export_ex('CSV', 'D:/Config/export.cfg',
+  {'Units Behaviour' => 'User'},
+  'Node', 'D:/Export/nodes.csv',
+  'Conduit', 'D:/Export/conduits.csv'
+)
+
+# Export to Shapefile (2 params per table)
+net.odec_export_ex('SHP', 'D:/Config/gis.cfg',
+  {'WGS84' => true},
+  'Node', 'D:/GIS/nodes.shp',
+  'Conduit', 'D:/GIS/conduits.shp'
+)
+
+# Export to GeoDatabase (6 params per table)
+net.odec_export_ex('GDB', 'D:/Config/gis.cfg', nil,
+  'Node',                     # Table
+  'Manholes',                 # Feature class
+  'SewerAssets',              # Feature dataset
+  false,                      # Update (false=create)
+  nil,                        # ArcSDE keyword
+  'D:/GIS/Model.gdb'         # GDB path
+)
+
+net.close
+```
+
+---
+
+## Best Practices
+
+1. **Always use transactions** (PAT_TRANSACTION_010)
+2. **Check for nil** before use (PAT_NULL_GUARD_028)
+3. **Clear selections** first (PAT_SELECTION_CLEAR_008)
+4. **Use absolute file paths** (PAT_FILE_PATH_044)
+5. **Include error handling** (PAT_ERROR_WRAP_027)
+6. **Mark/clean `_seen` flags** in tracing (PAT_TRACE_RESET_016)
+7. **Call `write()` after modifications**
+8. **Use descriptive commits** (PAT_COMMIT_MESSAGE_STD_041)
+9. **Convert IDs to strings** for hash keys
+10. **Reference Pattern IDs** for reusable code
+
+---
+
+## Quick Pattern Cross-Reference
+
+**When you need to:**
+- Access network → PAT_APP_ACCESS_001, PAT_UNIVERSAL_MODE_002
+- Get user input → PAT_USER_INPUT_043
+- Modify data → PAT_TRANSACTION_010, PAT_BULK_MODIFY_011
+- Trace network → PAT_TRACE_BASIC_014, PAT_TRACE_CONDITIONAL_015
+- Access results → PAT_RESULTS_ACCESS_018
+- Export data → PAT_EXPORT_ODEC_022, PAT_FILE_WRITE_CSV_023
+- Handle errors → PAT_ERROR_WRAP_027, PAT_NULL_GUARD_028
+- Work with files → PAT_FILE_PATH_044, PAT_STANDARD_LIBRARIES_046
+
+**See:** `InfoWorks_ICM_Ruby_Pattern_Reference.md` for complete pattern catalog

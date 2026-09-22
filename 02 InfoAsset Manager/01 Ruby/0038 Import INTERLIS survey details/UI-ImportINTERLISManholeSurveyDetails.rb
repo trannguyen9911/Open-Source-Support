@@ -108,7 +108,7 @@ else
 	  
 		if $result.has_key?(ro.id)
 			## Sort the details by distanz and videozaehlerstand in ascending order
-			sorted_details = $result[ro.id].sort_by { |details| [details[:distanz], details[:videozaehlerstand]] }
+			sorted_details = $result[ro.id].sort_by { |details| [details[:distanz] ? details[:distanz].to_f : Float::INFINITY, details[:videozaehlerstand]] }
 			puts "Inserting details on survey: #{ro.id} from TIDs:"
 			
 			sorted_details.each do |details|

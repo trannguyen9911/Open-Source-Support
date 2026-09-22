@@ -1,0 +1,1517 @@
+# InfoWorks ICM Ruby Pattern Reference for LLM Code Generation
+
+**Last Updated:** July 7, 2026
+
+**Load Priority:** CORE - Load for code template lookup  
+**Load Condition:** ALWAYS when implementing specific functionality
+
+## Document Purpose
+This is a **pattern reference guide** for LLM-assisted Ruby scripting in InfoWorks ICM. 
+
+**For LLMs:** Use this file to:
+- Find working code templates organized by task (initialization, data access, modification, etc.)
+- Look up pattern IDs (PAT_XXX_NNN) referenced in other files
+- Get intent, context, and related patterns for each code template
+
+**Prerequisite:** Read `InfoWorks_ICM_Ruby_Lessons_Learned.md` FIRST to avoid critical mistakes
+
+**Related Files:**
+- `InfoWorks_ICM_Ruby_Lessons_Learned.md` - **CRITICAL** Read FIRST - Critical gotchas (explains why .each not .find)
+- `InfoWorks_ICM_Ruby_API_Reference.md` - Method signatures (references patterns via PAT_XXX_NNN)
+- `InfoWorks_ICM_Ruby_Database_Reference.md` - Table names used in patterns (hw_*, sw_*)
+- `InfoWorks_ICM_Ruby_Tutorial_Context.md` - Complete workflow examples using these patterns
+- `InfoWorks_ICM_Ruby_Error_Reference.md` - References patterns for error solutions
+
+## Pattern Index
+
+**Patterns are organized in typical script execution order:**
+1. **Initialization** (001-003): Environment setup and error handling
+2. **Data Access** (004-006): Reading objects and schema discovery
+3. **Selection & Filtering** (007-009): Working with object collections
+4. **Modification** (010-013): Updating data safely
+5. **Tracing & Navigation** (014-017): Network traversal
+6. **Results** (018-020): Simulation output access
+7. **Simulation** (021): Running simulations
+8. **Import/Export** (022-024, 059-062): Data exchange and hierarchy import/export
+9. **Spatial** (025-026): Geometry operations
+10. **Utilities** (027-044, 046-051, 057-058): Helper patterns and performance — PAT_045 intentionally unused
+11. **Exchange** (052-056): Exchange-specific database and import/export patterns
+
+| Pattern ID | Category | Use When | Tags |
+|------------|----------|----------|------|
+| **Initialization Patterns** |
+| PAT_APP_ACCESS_001 | Core | First line of any script | env, bootstrap |
+| PAT_UNIVERSAL_MODE_002 | Core | Script runs in UI or Exchange | env, compat |
+| PAT_SCRIPT_INIT_003 | Core | Robust script initialization | bootstrap, error-handling |
+| **Data Access Patterns** |
+| PAT_DATA_FETCH_004 | Data | Retrieve single or multiple objects | data, fetch |
+| PAT_FIELD_DISCOVERY_005 | Data | Discover table schema | introspection, metadata |
+| PAT_SCENARIO_SWITCH_006 | Data | Safely modify multiple scenarios | scenario, transaction |
+| **Selection & Filtering Patterns** |
+| PAT_SELECTION_FALLBACK_007 | Selection | Use selection or all objects | selection, fallback |
+| PAT_SELECTION_CLEAR_008 | Selection | Clear before operation | selection, safety |
+| PAT_SELECTION_MARKING_009 | Selection | Mark traversal output | selection, tracing |
+| **Modification Patterns** |
+| PAT_TRANSACTION_010 | Modification | Ensure atomic writes | safety, write, transaction |
+| PAT_BULK_MODIFY_011 | Modification | Update many objects | bulk, write |
+| PAT_STRUCTURE_UPDATE_012 | Modification | Update complex nested data | structure, bulk |
+| PAT_IDEMPOTENT_FLAGGING_013 | Modification | Avoid double processing | safety, tracking |
+| **Tracing & Navigation Patterns** |
+| PAT_TRACE_BASIC_014 | Tracing | Downstream network traversal | network, tracing, selection |
+| PAT_TRACE_CONDITIONAL_015 | Tracing | Filtered directional trace | network, filter, tracing |
+| PAT_TRACE_RESET_016 | Tracing | Clear traversal flags | tracing, safety |
+| PAT_RELATIONSHIP_MAP_017 | Tracing | Build relationship index | mapping, parent-child |
+| **Results Patterns** |
+| PAT_RESULTS_ACCESS_018 | Results | Extract simulation metrics | results, analysis |
+| PAT_RESULTS_FIELDS_ENUM_019 | Results | Enumerate results fields | results, introspection |
+| PAT_RESULTS_STAT_SUMMARY_020 | Results | Quick statistics | results, analysis |
+| **Simulation Patterns** |
+| PAT_SIM_RUN_021 | Simulation | Create and launch run (Exchange) | simulation, exchange |
+| **Import/Export Patterns** |
+| PAT_EXPORT_ODEC_022 | Import/Export | Export with format options | export, odec |
+| PAT_FILE_WRITE_CSV_023 | Import/Export | Simple CSV export | export, csv |
+| PAT_STRUCTURE_TO_ARRAY_024 | Import/Export | Export WSStructure | export, structure |
+| PAT_HIERARCHY_EXPORT_059 | Import/Export | Export with hierarchy + manifest | export, hierarchy, path |
+| PAT_HIERARCHY_IMPORT_060 | Import/Export | Import with hierarchy recreation | import, hierarchy, groups |
+| PAT_NAME_CONFLICT_061 | Import/Export | Sibling group on name conflict | import, naming, conflict |
+| PAT_MULTI_FILE_DETECT_062 | Import/Export | Detect multi-file exports | export, detection |
+| **Spatial Patterns** |
+| PAT_SPATIAL_CLUSTER_025 | Spatial | Group by distance | spatial, geometry |
+| PAT_NEAREST_OBJECT_026 | Spatial | Find nearest node | spatial, proximity |
+| **Utility Patterns** |
+| PAT_ERROR_WRAP_027 | Utilities | Error boundary | error-handling, safety |
+| PAT_NULL_GUARD_028 | Utilities | Early nil guard | safety, validation |
+| PAT_SAFE_NUMERIC_029 | Utilities | Guard numeric operations | safety, validation |
+| PAT_FIELD_EXISTS_030 | Utilities | Defensive field check | compat, validation |
+| PAT_GUID_GEN_031 | Utilities | GUID generation | utility, tracking |
+| PAT_DYNAMIC_FIELD_ACCESS_032 | Utilities | Bracket field access | utility, iteration |
+| PAT_HASH_TRACKING_033 | Utilities | Fast object lookup | utility, performance |
+| PAT_BATCH_PROCESS_034 | Utilities | Batch with progress | performance, logging |
+| PAT_TIMESTAMP_035 | Utilities | Timestamp tokens | utility, audit |
+| PAT_CONDITIONAL_FILTER_036 | Utilities | Early-out skip logic | performance, filtering |
+| PAT_PROGRESS_LOG_037 | Utilities | Progress logger | performance, logging |
+| PAT_FAST_LOOKUP_SET_038 | Utilities | Set for membership | performance, collection |
+| PAT_ITERATION_CAP_039 | Utilities | Safety cap | safety, loops |
+| PAT_COLLECTION_BUILD_040 | Utilities | Dual collection | utility, collection |
+| PAT_COMMIT_MESSAGE_STD_041 | Utilities | Standardized commit | audit, governance |
+| PAT_ENV_CONFIG_042 | Utilities | Environment-driven config | config, deployment |
+| PAT_USER_INPUT_043 | Utilities | Get user input (UI only) | ui, dialog, input |
+| PAT_FILE_PATH_044 | Utilities | Script file path handling | path, files, compat |
+| PAT_STANDARD_LIBRARIES_046 | Utilities | Safe Ruby libraries | require, libraries |
+| PAT_DATETIME_SIM_047 | Utilities | DateTime vs relative time | simulation, time |
+| PAT_RESULTS_FIELD_048 | Results | Results field code reference | results, fields |
+| PAT_ODIC_OPTIONS_049 | Import/Export | ODIC/ODEC option hashes | import, export, options |
+| PAT_LAUNCH_SIM_050 | Simulation | Launch sims with agent | simulation, exchange |
+| PAT_RESULTS_PATH_051 | Utilities | Handle results_path file path | results, sim, path |
+| PAT_USER_MSGBOX_057 | Utilities | Display message boxes (UI only) | ui, dialog, msgbox |
+| PAT_USER_INPUTBOX_058 | Utilities | Get text input from user (UI only) | ui, dialog, input |
+| **Exchange-Specific Patterns** |
+| PAT_EXC_DB_OPEN_052 | Exchange | Open database (standalone/workgroup) | exchange, database |
+| PAT_EXC_RUN_SETUP_053 | Exchange | Create InfoWorks run with new_run | exchange, run, iw |
+| PAT_EXC_RUN_SETUP_SWMM_054 | Exchange | Create SWMM run with builder | exchange, run, swmm |
+| PAT_EXC_ODIC_IMPORT_055 | Exchange | ODIC import with error handling | exchange, import, odic |
+| PAT_EXC_ODEC_EXPORT_056 | Exchange | ODEC export with multiple tables | exchange, export, odec |
+
+---
+
+## 1. Initialization Patterns
+
+### PAT_APP_ACCESS_001: UI vs Exchange Access
+**Intent:** Obtain network handle based on execution environment  
+**Context:** First line of almost every script  
+**Outputs:** `net` (network object)  
+**Failure Modes:** Bad path, network not found, permission denied  
+
+```ruby
+# UI Script
+net = WSApplication.current_network
+
+# Exchange Script
+db = WSApplication.open('path\\to\\database.icmm', false)
+mo = db.model_object_from_type_and_id('Model Network', network_id)
+net = mo.open
+```
+
+### PAT_UNIVERSAL_MODE_002: Dual-Mode Wrapper
+**Intent:** Single entry pattern for UI and Exchange  
+**Context:** Scripts deployed to both environments  
+**Related:** PAT_APP_ACCESS_001, PAT_ENV_CONFIG_042  
+
+```ruby
+if WSApplication.ui?
+  net = WSApplication.current_network
+else
+  db = WSApplication.open(ENV.fetch('ICM_DB_PATH','database.icmm'), false)
+  mo = db.model_object_from_type_and_id('Model Network', ENV.fetch('ICM_NETWORK_ID','1'))
+  net = mo.open
+end
+```
+
+### PAT_SCRIPT_INIT_003: Robust Initialization
+**Intent:** Standardized header with error trapping  
+**Context:** Production scripts requiring reliability  
+
+```ruby
+require 'date'
+require 'set'
+
+begin
+  net = WSApplication.current_network if WSApplication.ui?
+  puts "Script start: #{Time.now}" if net
+rescue => e
+  STDERR.puts "Initialization error: #{e.message}"
+  exit 1
+end
+```
+
+---
+
+## 2. Data Access Patterns
+
+### PAT_DATA_FETCH_004: Row Object Fetch
+**Intent:** Safe object retrieval  
+**Outputs:** Single object or collection  
+**Failure Modes:** Returns nil if not found  
+
+```ruby
+# Single object
+node = net.row_object('hw_node', 'NODE_ID')
+raise 'Node not found' unless node
+
+# Collection
+nodes = net.row_objects('hw_node')
+nodes.each { |n| puts n.id }
+```
+
+### PAT_FIELD_DISCOVERY_005: Schema Introspection
+**Intent:** Adapt to schema variations  
+**Context:** Cross-version scripts  
+
+```ruby
+net.tables.each do |table|
+  puts "Table: #{table.name}"
+  table.fields.each { |f| puts "  #{f.name} (#{f.data_type})" }
+end
+```
+
+### PAT_SCENARIO_SWITCH_006: Safely Modify Multiple Scenarios
+**Intent:** Switch between scenarios and apply changes
+**Context:** Processing multiple what-if scenarios
+**Related:** PAT_TRANSACTION_010
+
+```ruby
+scenarios = ['Base', 'Proposed', 'Future']
+scenarios.each do |scenario_name|
+  net.current_scenario = scenario_name
+  puts "Processing scenario: #{scenario_name}"
+  
+  net.transaction_begin
+  begin
+    net.row_objects('hw_node').each do |node|
+      # Modify based on scenario
+      node.user_text_1 = scenario_name
+      node.write
+    end
+    net.transaction_commit
+    net.commit("Updated #{scenario_name} scenario")
+  rescue => e
+    puts "Error in #{scenario_name}: #{e.message}"
+  end
+end
+```
+
+---
+
+## 3. Selection & Collection Patterns
+
+### PAT_SELECTION_FALLBACK_007: Selection or All
+**Intent:** Use selection if exists, else all objects  
+
+```ruby
+sel = net.row_object_collection_selection('_nodes')
+objects = sel.length > 0 ? sel : net.row_objects('hw_node')
+```
+
+### PAT_SELECTION_CLEAR_008: Clear Before Operation
+**Intent:** Ensure clean selection state  
+
+```ruby
+net.clear_selection
+```
+
+### PAT_SELECTION_MARKING_009: Mark Traversal Output
+**Intent:** Use selection as trace output channel  
+
+```ruby
+def mark_selected(obj)
+  obj.selected = true if obj && obj.respond_to?(:selected=)
+end
+```
+
+---
+
+## 4. Modification Patterns
+
+### PAT_TRANSACTION_010: Transaction Wrapper
+**Intent:** Ensure atomicity of batch writes  
+**Context:** All multi-object modifications  
+**Failure Modes:** Rollback on exception  
+
+```ruby
+net.transaction_begin
+begin
+  net.row_objects('hw_node').each do |n|
+    n.user_text_1 = 'Modified'
+    n.write
+  end
+  net.transaction_commit
+rescue => e
+  STDERR.puts "Transaction failed: #{e.message}"
+end
+net.commit('Updated nodes')
+```
+
+### PAT_BULK_MODIFY_011: Bulk Update Template
+**Intent:** Scalable property updates  
+**Outputs:** Count of modified objects  
+
+```ruby
+net.transaction_begin
+modified = 0
+net.row_objects('hw_node').each do |n|
+  next unless n.ground_level
+  n.user_number_1 = n.ground_level * 1.1
+  n.write
+  modified += 1
+end
+net.transaction_commit
+net.commit("Modified #{modified} nodes")
+```
+
+### PAT_STRUCTURE_UPDATE_012: WSStructure from Array
+**Intent:** Transform array of hashes to WSStructure  
+**Context:** Complex nested data (RTC, cross-sections)  
+
+```ruby
+def update_structure_from_array(structure, rows)
+  raise 'Not WSStructure' unless structure.is_a?(WSStructure)
+  structure.length = rows.length
+  rows.each_with_index do |data, i|
+    data.each { |key, val| structure[i][key] = val }
+  end
+  structure.write
+end
+```
+
+### PAT_IDEMPOTENT_FLAGGING_013: Avoid Double Processing
+**Intent:** Track processed objects  
+
+```ruby
+processed = {}
+net.row_objects('hw_conduit').each do |c|
+  next if processed[c.id]
+  # work
+  processed[c.id] = true
+end
+```
+
+---
+
+## 5. Tracing & Navigation Patterns
+
+### PAT_TRACE_BASIC_014: Downstream Trace
+**Intent:** Traverse downstream links  
+**Side Effects:** Sets `selected=true`, marks `_seen`  
+
+```ruby
+def trace_downstream(start_node)
+  queue = [start_node]
+  start_node._seen = true
+  
+  while queue.any?
+    node = queue.shift
+    node.selected = true
+    
+    node.ds_links.each do |link|
+      next if link._seen
+      link._seen = true
+      link.selected = true
+      
+      ds_node = link.ds_node
+      if ds_node && !ds_node._seen
+        ds_node._seen = true
+        queue << ds_node
+      end
+    end
+  end
+end
+```
+
+### PAT_TRACE_CONDITIONAL_015: Filtered Trace
+**Intent:** Conditional directional traversal  
+**Inputs:** `conditions` hash with field/operator/value  
+
+```ruby
+def trace_with_conditions(start_node, upstream: true, conditions: {})
+  queue = [start_node]
+  start_node._seen = true
+  
+  while queue.any?
+    node = queue.shift
+    node.selected = true
+    links = upstream ? node.us_links : node.ds_links
+    
+    links.each do |link|
+      next if link._seen || exclude_link?(link, conditions)
+      link._seen = true
+      link.selected = true
+      next_node = upstream ? link.us_node : link.ds_node
+      queue << next_node if next_node && !next_node._seen
+      next_node._seen = true if next_node
+    end
+  end
+end
+
+def exclude_link?(link, conditions)
+  conditions.any? do |field, spec|
+    val = link[field]
+    case spec[:operator]
+    when '>' then val && val > spec[:value]
+    when '<' then val && val < spec[:value]
+    when '==' then val == spec[:value]
+    when 'nil' then val.nil?
+    else false
+    end
+  end
+end
+```
+
+### PAT_TRACE_RESET_016: Reset Traversal Flags
+**Intent:** Clear `_seen` flags after tracing  
+**Context:** After any trace operation  
+
+```ruby
+def reset_seen(net)
+  %w[hw_node hw_conduit].each do |tbl|
+    net.row_objects(tbl).each { |o| o._seen = false if o.respond_to?(:_seen=) }
+  end
+end
+```
+
+---
+
+### PAT_RELATIONSHIP_MAP_017: Build Relationship Index
+**Intent:** Build relationship index  
+
+```ruby
+# Build node→subcatchments map
+node_sub_map = Hash.new { |h, k| h[k] = [] }
+
+net.row_objects('hw_node').each do |node|
+  node.navigate('subcatchments').each do |sub|
+    node_sub_map[node.node_id] << sub
+  end
+end
+
+# Use the map
+nodes.each do |node|
+  subs = node_sub_map[node.node_id]
+  puts "Node #{node.node_id} has #{subs.length} subcatchments"
+end
+```
+
+---
+
+## 6. Results Handling Patterns
+
+### PAT_RESULTS_ACCESS_018: Access 1D Results
+**Intent:** Extract simulation metrics  
+**Context:** After simulation run  
+
+```ruby
+points = net.row_objects('hw_1d_results_point')
+qfull_max = points.map { |p| p.results('qfull').max }
+puts "Max qfull: #{qfull_max.max}"
+```
+
+### PAT_RESULTS_FIELDS_ENUM_019: Enumerate Results Fields
+**Intent:** Discover available result fields  
+
+```ruby
+fields = points.first.table_info.fields.map(&:name)
+puts fields.join(',')
+```
+
+### PAT_RESULTS_STAT_SUMMARY_020: Quick Statistics
+**Intent:** Min/max/mean for result field  
+
+```ruby
+def summarize_results(ro, field)
+  r = ro.results(field)
+  { min: r.min, max: r.max, mean: r.mean }
+end
+```
+
+---
+
+## 7. Simulation Management (Exchange Only)
+
+### PAT_SIM_RUN_021: Create and Launch Simulation
+**Intent:** Programmatic simulation execution  
+**Context:** Exchange scripts only  
+
+```ruby
+run = group.new_run('Run Name', 'MODG~Group>NNET~Network', nil, 1, nil, 
+  {'Duration'=>1440, 'DurationUnit'=>'Minutes', 'TimeStep'=>1})
+sim = run.children[0]
+WSApplication.connect_local_agent(1000)
+WSApplication.launch_sims([sim], '.', false, 0, 0)
+```
+
+---
+
+## 8. Import/Export Patterns
+
+### PAT_EXPORT_ODEC_022: Configurable ODEC Export
+**Intent:** Export with format-specific options  
+
+```ruby
+def configure_odec(format, overrides={})
+  base = {'Error File'=>'./errors.txt', 'Coordinate System'=>'Grid', 'Use Display Precision'=>true}
+  base.merge(overrides)
+end
+
+opts = configure_odec('CSV', {'Delimiter'=>','})
+net.odec_export_ex('CSV', './cfg.cfg', opts, 'Node', 'nodes.csv')
+```
+
+### PAT_FILE_WRITE_CSV_023: Simple CSV Export
+**Intent:** Export rows to CSV  
+
+```ruby
+require 'csv'
+CSV.open(path, 'w') do |csv|
+  csv << ['ID', 'X', 'Y', 'Level']
+  net.row_objects('hw_node').each do |n|
+    csv << [n.node_id, n.x, n.y, n.ground_level]
+  end
+end
+```
+
+### PAT_STRUCTURE_TO_ARRAY_024: Export WSStructure
+**Intent:** Convert structure to serializable format  
+
+```ruby
+def structure_to_array(structure)
+  return [] unless structure.is_a?(WSStructure)
+  (0...structure.length).map do |i|
+    Hash[structure[i].table_info.fields.map { |f| [f.name, structure[i][f.name]] }]
+  end
+end
+```
+
+### PAT_HIERARCHY_EXPORT_059: Export Model Objects with Hierarchy Preservation
+**Intent:** Export objects preserving full container hierarchy via mo.path parsing  
+**Critical:** mo.path contains multiple container types (MODG~, TDBG~, etc.) — extract ALL non-leaf segments
+
+```ruby
+# Parse ALL parent container names from mo.path
+# Format: ">TYPE~Name>TYPE~Name>RAIN~EventName"
+def extract_group_path(full_path)
+  return [] if full_path.nil? || full_path.empty?
+  groups = []
+  full_path.split('>').each do |seg|
+    next if seg.empty?
+    if seg =~ /^(\w+)~(.+)$/
+      seg_type = $1
+      seg_name = $2.gsub('\\~', '~').gsub('\\>', '>').gsub('\\\\', '\\')
+      next if seg_type == 'RAIN'  # Skip leaf node, keep ALL containers
+      groups << seg_name
+    end
+  end
+  groups
+end
+
+# Export with manifest for later import
+all_events = []
+db.model_object_collection('Rainfall Event').each { |mo| all_events << mo }
+
+all_events.each do |event|
+  group_segments = extract_group_path(event.path)
+  group_path_str = group_segments.join(' | ')
+  target_folder = ensure_folder_path(export_folder, group_segments)
+  event.export(file_path, '')
+  manifest << { file_path: relative_path, group_path: group_path_str }
+end
+```
+
+### PAT_HIERARCHY_IMPORT_060: Import with Hierarchy Recreation
+**Intent:** Recreate Model Group hierarchy from manifest under a root group  
+**Critical:** `.children` is stale after import — track names locally in a Hash
+
+```ruby
+$name_registry = {}  # gkey -> { name.downcase => true }
+
+def register_name(gkey, name)
+  $name_registry[gkey] ||= {}
+  $name_registry[gkey][name.downcase] = true
+end
+
+def name_taken?(gkey, name)
+  return false unless $name_registry.key?(gkey)
+  $name_registry[gkey].key?(name.downcase)
+end
+
+# Create root import group
+root = nil
+db.root_model_objects.each do |obj|
+  root = obj if obj.type == 'Model Group' && obj.name == 'Imported Data'
+end
+root ||= db.new_model_object('Model Group', 'Imported Data')
+
+# Walk/create group hierarchy under root
+def ensure_group_hierarchy(parent, group_path_str)
+  return parent if group_path_str.nil? || group_path_str.strip.empty?
+  current = parent
+  group_path_str.split('|').each do |seg|
+    name = seg.strip
+    next if name.empty?
+    child = nil
+    current.children.each { |c| child = c if c.type == 'Model Group' && c.name == name }
+    child ||= current.new_model_object('Model Group', name)
+    current = child
+  end
+  current
+end
+
+# Import each entry
+manifest.each do |entry|
+  target = ensure_group_hierarchy(root, entry[:group_path])
+  gkey = entry[:group_path]
+  target.import_new_model_object('Rainfall Event', entry[:name], '', entry[:file])
+  register_name(gkey, entry[:name])  # Track locally, don't rely on .children
+end
+```
+
+### PAT_NAME_CONFLICT_061: Sibling Group on Name Conflict
+**Intent:** Resolve name conflicts by creating sibling groups rather than renaming objects  
+**Rationale:** Preserves original names for use in simulations and references
+
+```ruby
+# If name already exists in target group, create sibling group with _2 suffix
+if name_taken?(gkey, event_name)
+  parent_of_target = get_parent(target_group)
+  leaf_name = get_leaf_name(target_group)
+  counter = 2
+  loop do
+    sibling_name = "#{leaf_name}_#{counter}"
+    sibling = find_or_create_child_group(parent_of_target, sibling_name)
+    sibling_gkey = "#{gkey}_#{counter}"
+    unless name_taken?(sibling_gkey, event_name)
+      target_group = sibling
+      gkey = sibling_gkey
+      break
+    end
+    counter += 1
+  end
+end
+# Import with ORIGINAL name intact
+target_group.import_new_model_object('Rainfall Event', event_name, '', file_path)
+```
+
+### PAT_MULTI_FILE_DETECT_062: Detect Multi-File Exports
+**Intent:** Detect when a single export produces multiple files (e.g., multi-profile rainfall)  
+**Critical:** API behavior — not documented; must snapshot directory before/after
+
+```ruby
+# Snapshot before export
+before = Dir.glob(File.join(folder, '*')).reject { |f| File.directory?(f) }
+
+event.export(file_path, '')
+
+# Snapshot after export
+after = Dir.glob(File.join(folder, '*')).reject { |f| File.directory?(f) }
+new_files = after - before
+
+if new_files.size > 1
+  # Multi-file export: group in subfolder
+  subfolder = File.join(folder, sanitize_name(event.name))
+  FileUtils.mkdir_p(subfolder)
+  new_files.each { |f| FileUtils.mv(f, File.join(subfolder, File.basename(f))) }
+end
+```
+
+---
+
+## 9. Spatial & Geometry Patterns
+
+### PAT_SPATIAL_CLUSTER_025: Spatial Clustering
+**Intent:** Group nodes by distance threshold  
+
+```ruby
+def cluster_nodes(net, threshold=10.0)
+  require 'set'
+  clusters = []
+  processed = Set.new
+  
+  net.row_objects('hw_node').each do |node|
+    next if processed.include?(node.id)
+    cluster = [node]
+    processed.add(node.id)
+    
+    net.row_objects('hw_node').each do |other|
+      next if processed.include?(other.id)
+      dist = Math.sqrt((node.x - other.x)**2 + (node.y - other.y)**2)
+      if dist <= threshold
+        cluster << other
+        processed.add(other.id)
+      end
+    end
+    clusters << cluster if cluster.length > 1
+  end
+  clusters
+end
+```
+
+### PAT_NEAREST_OBJECT_026: Find Nearest Node
+**Intent:** Spatial proximity without index  
+**Failure Modes:** O(n) complexity - inefficient for large networks  
+
+```ruby
+def nearest_node(net, x, y)
+  min_dist = Float::INFINITY
+  nearest = nil
+  net.row_objects('hw_node').each do |n|
+    next unless n.x && n.y
+    dist = Math.sqrt((n.x - x)**2 + (n.y - y)**2)
+    if dist < min_dist
+      min_dist = dist
+      nearest = n
+    end
+  end
+  nearest
+end
+```
+
+---
+
+## 10. Utility Patterns
+
+### PAT_ERROR_WRAP_027: Error Boundary
+**Intent:** Wrap operations in error handling  
+**Context:** Production scripts requiring reliability  
+
+```ruby
+def safe_process(net)
+  begin
+    yield
+  rescue => e
+    STDERR.puts "Error: #{e.message}"
+    STDERR.puts e.backtrace.join("\n")
+    false
+  end
+end
+
+# Usage
+safe_process(net) do
+  net.transaction_begin
+  # risky operations
+  net.transaction_commit
+end
+```
+
+### PAT_NULL_GUARD_028: Early Nil Guard
+**Intent:** Prevent nil reference errors  
+**Context:** Defensive programming  
+
+```ruby
+def process_node(node)
+  return unless node
+  return unless node.ground_level
+  
+  # Safe to proceed
+  adjusted = node.ground_level * 1.1
+  node.user_number_1 = adjusted
+  node.write
+end
+```
+
+### PAT_SAFE_NUMERIC_029: Guard Numeric Operations
+**Intent:** Safe numeric operations with nil/zero checks  
+**Context:** Calculations on potentially missing data  
+
+```ruby
+def safe_divide(numerator, denominator)
+  return nil if numerator.nil? || denominator.nil?
+  return nil if denominator.zero?
+  numerator.to_f / denominator
+end
+
+# Usage
+ratio = safe_divide(node.us_invert, node.ground_level)
+puts "Ratio: #{ratio}" if ratio
+```
+
+### PAT_FIELD_EXISTS_030: Defensive Field Check
+**Intent:** Check field exists before accessing  
+**Context:** Cross-version compatibility  
+
+```ruby
+if node.table_info.fields.any? { |f| f.name == 'user_number_10' }
+  value = node.user_number_10
+  puts "User number 10: #{value}"
+else
+  puts "Field user_number_10 not available in this version"
+end
+```
+
+### PAT_GUID_GEN_031: GUID Generation
+**Intent:** Unique identifiers for tracking  
+**Failure Modes:** Windows only; falls back to SecureRandom  
+
+```ruby
+begin
+  require 'Win32API'
+  uuid_create = Win32API.new('rpcrt4', 'UuidCreate', 'P', 'L')
+  def new_guid
+    result = ' ' * 16
+    uuid_create.call(result)
+    result.unpack('SSSSSSSS').then { |a| sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X', *a) }
+  end
+rescue LoadError
+  def new_guid; require 'securerandom'; SecureRandom.uuid; end
+end
+```
+
+### PAT_DYNAMIC_FIELD_ACCESS_032: Bracket Field Access
+**Intent:** Iterate numbered field sequences  
+
+```ruby
+(1..10).each do |i|
+  val = land_use["runoff_index_#{i}"]
+  puts "Runoff surface #{i}: #{val}" if val
+end
+```
+
+### PAT_HASH_TRACKING_033: Fast Object Lookup
+**Intent:** O(1) membership tests  
+
+```ruby
+selected = {}
+net.row_objects_selection('hw_runoff_surface').each { |o| selected[o.id.to_s] = true }
+if selected.key?(some_id.to_s)
+  # process
+end
+```
+
+### PAT_BATCH_PROCESS_034: Batch with Progress
+**Intent:** Reduce memory, provide feedback  
+
+```ruby
+def batch_process(objects, batch_size: 200)
+  total = objects.length
+  done = 0
+  objects.each_slice(batch_size) do |batch|
+    batch.each { |obj| yield(obj) if block_given? }
+    done += batch.length
+    puts "Progress: #{done}/#{total} (#{(done.to_f/total*100).round(1)}%)"
+  end
+end
+```
+
+### PAT_TIMESTAMP_035: Timestamp Tokens
+**Intent:** Temporal markers for audit trails  
+
+```ruby
+timestamp_iso = Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')
+friendly_stamp = Time.now.strftime('%Y%m%d_%H%M%S')
+object.user_text_1 = "Updated_#{friendly_stamp}"
+```
+
+### PAT_CONDITIONAL_FILTER_036: Early-Out Skip Logic
+**Intent:** Efficient filtering in loops  
+
+```ruby
+net.row_objects('hw_node').each do |n|
+  next if n.ground_level.nil? || n.system_type.to_s.downcase != 'storm'
+  # process storm node
+end
+```
+
+### PAT_PROGRESS_LOG_037: Progress Logger
+**Intent:** Feedback for long operations  
+
+```ruby
+def progress_log(current, total, step=100)
+  return unless (current % step).zero?
+  pct = (current.to_f/total*100).round(1)
+  puts "Processed #{current}/#{total} (#{pct}%)"
+end
+```
+
+### PAT_FAST_LOOKUP_SET_038: Set for Membership
+**Intent:** O(1) vs O(n) lookups  
+
+```ruby
+require 'set'
+id_set = Set.new(net.row_objects('hw_node').map(&:id))
+```
+
+### PAT_ITERATION_CAP_039: Safety Cap
+**Intent:** Prevent infinite loops  
+
+```ruby
+max_iter = 10_000
+iter = 0
+while queue.any? && iter < max_iter
+  # work
+  iter += 1
+end
+```
+
+### PAT_COLLECTION_BUILD_040: Dual Collection
+**Intent:** Build all and selected arrays  
+
+```ruby
+all_ids = []
+selected = []
+net.row_objects('hw_node').each do |n|
+  all_ids << n.node_id
+  selected << n if n.selected?
+end
+```
+
+### PAT_COMMIT_MESSAGE_STD_041: Standardized Commit
+**Intent:** Descriptive audit trail  
+
+```ruby
+net.commit("Update: user_text_1 bulk modification (#{modified} objects)")
+```
+
+### PAT_ENV_CONFIG_042: Environment-Driven Config
+**Intent:** Externalize configuration  
+
+```ruby
+db_path = ENV.fetch('ICM_DB_PATH', 'database.icmm')
+network_id = ENV.fetch('ICM_NETWORK_ID', '1')
+```
+
+### PAT_USER_INPUT_043: User Input Dialog
+**Intent:** Prompt user for input (UI only)  
+**Critical:** Standard Ruby input methods DON'T WORK in InfoWorks ICM. Use `false` for hard_wire_cancel.
+
+```ruby
+# INVALID - These fail in InfoWorks ICM:
+# input = gets.chomp      # Returns nil
+# input = STDIN.gets      # Returns nil
+# args = ARGV             # Always empty
+
+# VALID - Use WSApplication.prompt(title, layout, hard_wire_cancel):
+layout = [
+  ['Enter node ID', 'String', 'MH001'],
+  ['Depth (m)', 'Number', 1.5, 2],                                      # 2 decimal places
+  ['Process?', 'Boolean', true],
+  ['Scenario', 'String', 'Base', nil, 'LIST', ['Base', 'Storm1']],      # dropdown
+  ['Month', 'Number', 7, nil, 'MONTH'],                                 # month picker
+  ['Range', 'Number', 300, 0, 'RANGE', 100, 1000],                      # slider
+  ['Output file', 'String', nil, nil, 'FILE', false, 'csv', 'CSV', false], # file save
+  ['Folder', 'String', nil, nil, 'FOLDER', 'Select Folder']             # folder picker
+]
+
+values = WSApplication.prompt('Parameters', layout, false)  # false = don't kill script on cancel
+exit if values.nil?  # User cancelled
+
+# FIELD TYPE REFERENCE - Array index positions matter:
+# READONLY  [label, 'READONLY', display_text]                    -> returns ''
+# STRING    [label, 'String', default]                           -> returns String
+# BOOLEAN   [label, 'Boolean', default_bool]                     -> returns true/false
+# NUMBER    [label, 'Number', default]                           -> returns Number
+# NUMBER    [label, 'Number', default, decimal_places]           -> returns Number
+# LIST      [label, 'String', default, nil, 'LIST', [options]]   -> returns String
+# RANGE     [label, 'Number', default, decimals, 'RANGE', min, max] -> returns Number
+# MONTH     [label, 'Number', default(1-12), nil, 'MONTH']       -> returns Number
+# FOLDER    [label, 'String', default, nil, 'FOLDER', title]     -> returns String path
+# FILE      [label, 'String', default, nil, 'FILE', open?, ext, desc, multi?] -> returns String path
+
+# Multi-section dialog with READONLY headers:
+fields = []
+fields << ['--- REQUIRED ---', 'READONLY', '']
+fields << ['Project Name', 'String', 'MyProject']
+fields << ['--- OPTIONAL ---', 'READONLY', '']
+fields << ['Enable Logging', 'Boolean', true]
+
+result = WSApplication.prompt('Config', fields, false)
+exit if result.nil?
+# result[0] = '' (READONLY), result[1] = project_name, result[2] = '' (READONLY), result[3] = logging
+```
+
+### PAT_FILE_PATH_044: Script File Path Handling
+**Intent:** Reliable file paths in UI and Exchange  
+**Critical:** `__FILE__` behavior varies between UI and Exchange
+
+```ruby
+# UNRELIABLE - Works in Exchange, fails in UI:
+script_path = __FILE__         # Inconsistent across environments
+working_dir = Dir.pwd          # Different in UI vs Exchange
+config = 'config.cfg'          # Relative path - won't resolve
+
+# CORRECT - Consistent in both environments:
+script_file = WSApplication.script_file
+script_dir = File.dirname(script_file)
+
+# Build relative paths
+config_file = File.join(script_dir, 'config.cfg')
+data_folder = File.join(script_dir, 'data')
+
+# Prefer absolute paths
+output_file = 'C:/Output/results.csv'
+
+# WINDOWS: Case-insensitive file path tracking
+# Ruby strings are case-sensitive but Windows FS is not.
+# Always use .downcase when tracking paths in hashes:
+used_paths = {}
+candidate = File.join(folder, "#{name}.red")
+if used_paths.key?(candidate.downcase)
+  # Path collision - append suffix
+else
+  used_paths[candidate.downcase] = true
+end
+
+# Note: __FILE__ unreliable in UI - use WSApplication.script_file
+```
+
+### PAT_STANDARD_LIBRARIES_046: Safe Ruby Libraries
+**Intent:** Know which Ruby libraries work in ICM  
+**Critical:** External gems NOT available - only standard library
+
+```ruby
+# AVAILABLE - Standard library modules:
+require 'csv'       # CSV file operations
+require 'date'      # Date/time handling  
+require 'set'       # Set operations
+require 'json'      # JSON parsing
+require 'fileutils' # File utilities
+require 'pathname'  # Path operations
+
+# NOT AVAILABLE - External gems:
+# require 'nokogiri'   # XML parsing - will fail
+# require 'httparty'   # HTTP requests - will fail
+# require 'sqlite3'    # Database - will fail
+# require 'pg'         # PostgreSQL - will fail
+
+# CAN LOAD - Local Ruby files:
+require 'C:/Scripts/my_utilities.rb'
+require File.join(script_dir, 'helpers.rb')
+```
+
+### PAT_DATETIME_SIM_047: DateTime vs Relative Time in Simulations
+**Intent:** Handle absolute and relative simulation times correctly
+**Context:** Simulations can use absolute DateTime or relative negative double
+**Critical:** InfoWorks-specific time representation
+
+```ruby
+# Check timestep type
+timesteps = net.list_timesteps
+
+if timesteps.first.is_a?(DateTime)
+  # Absolute time simulation
+  puts "Start: #{timesteps.first.strftime('%Y-%m-%d %H:%M:%S')}"
+  # Use DateTime methods
+  duration = (timesteps.last - timesteps.first) * 24 * 3600  # seconds
+else
+  # Relative time simulation (negative double in seconds)
+  puts "Relative time: #{timesteps.first} seconds"
+  # Time values are negative
+  duration = timesteps.last.abs - timesteps.first.abs
+end
+```
+
+### PAT_RESULTS_FIELD_048: Results Field Code Reference
+**Intent:** Use correct field codes for accessing results
+**Context:** Results methods require specific field codes, not UI display names
+**Critical:** Field codes are case-sensitive and product-specific
+
+```ruby
+# Common InfoWorks results field codes:
+RESULTS_FIELDS_HW = {
+  'depnod' => 'Node depth',
+  'level' => 'Node level',
+  'flood' => 'Node flooding',
+  'qlink' => 'Link flow',
+  'vlink' => 'Link velocity',
+  'dlink' => 'Link depth',
+  'sednod' => 'Node sediment depth'
+}
+
+# Access results by field code
+node.results('depnod').max  # Node depth
+link.results('qlink').mean  # Link flow
+
+# Get all available result field names
+result_field_names = net.list_result_field_names
+result_field_names.each { |name| puts name }
+```
+
+### PAT_ODIC_OPTIONS_049: ODIC/ODEC Option Hashes
+**Intent:** Common option hash keys for import/export operations
+**Context:** ODIC (import) and ODEC (export) use option hashes for configuration
+**Critical:** Key names are case-sensitive and must match exactly
+
+```ruby
+# ODIC import options
+odic_options = {
+  'Error File' => 'C:/Temp/import_errors.txt',
+  'Duplication Behaviour' => 'Merge',
+  'Units Behaviour' => 'Native',
+  'Update Based On Asset ID' => false,
+  'Set Value Flag' => '#'
+}
+
+net.odic_import_ex('CSV', 'config.cfg', odic_options, 'Node', 'nodes.csv')
+
+# ODEC export options
+odec_options = {
+  'Error File' => 'C:/Temp/export_errors.txt',
+  'Units Behaviour' => 'User',
+  'Native System' => false,
+  'Export Selection' => true
+}
+
+net.odec_export('CSV', 'config.cfg', odec_options, 'nodes.csv')
+
+# Always check error file after operations
+if File.exist?(odic_options['Error File']) && File.size(odic_options['Error File']) > 0
+  puts "Import errors occurred:"
+  puts File.read(odic_options['Error File'])
+end
+```
+
+### PAT_LAUNCH_SIM_050: Launch Simulations with Agent
+**Intent:** Properly configure and launch simulations in Exchange
+**Context:** Exchange scripts require agent connection and proper launch parameters
+**Critical:** Must connect to agent before launching
+
+```ruby
+# Connect to local agent and launch simulation
+timeout_ms = 1000
+WSApplication.connect_local_agent(timeout_ms)
+sim_mo = db.model_object_from_type_and_id('Sim', sim_id)
+
+working_dir = 'C:/Temp/ICM_Results'
+agent_id = 1
+job_id = sim_mo.run_ex(working_dir, agent_id)
+
+puts "Simulation launched with job ID: #{job_id}"
+
+# Wait for completion
+WSApplication.wait_for_jobs(job_id)
+
+# Check status
+case sim_mo.status
+when 'Complete'
+  puts "Simulation completed successfully"
+  results_file = sim_mo.results_path
+  results_dir = File.dirname(results_file)
+  log_file = File.join(results_dir, "SIM#{sim_id}.log")
+when 'Failed'
+  puts "Simulation failed"
+else
+  puts "Simulation status: #{sim_mo.status}"
+end
+```
+
+### PAT_RESULTS_PATH_051: Simulation results_path Returns File Not Directory
+**Intent:** Handle results_path which returns .iwr file path, not directory  
+**Context:** Accessing log files or CSV exports in results folder  
+**Critical:** Unlike typical "path" properties, results_path is a file path
+
+```ruby
+# results_path returns FILE path including .iwr:
+results_path = sim_mo.results_path
+# => "C:/Users/.../Results/SIM2608.iwr"
+
+# Extract directory for file operations:
+results_dir = File.dirname(results_path)
+log_path = File.join(results_dir, "SIM#{sim_id}.log")
+csv_path = File.join(results_dir, "SIM#{sim_id}.csv")
+```
+
+### PAT_USER_MSGBOX_057: Display Message Boxes
+**Intent:** Show modal dialog with custom message and buttons (UI only)
+**Context:** User confirmation, warnings, information display
+**Availability:** UI scripts only
+**Critical:** 4th parameter controls auto-cancel behavior
+
+```ruby
+# Basic message box
+result = WSApplication.message_box(
+  'Are you sure you want to delete selected nodes?',
+  'YesNoCancel',  # Button types: 'OK', 'OKCancel', 'YesNo', 'YesNoCancel'
+  '?',            # Icon: '?', '!', 'Stop', 'Information'
+  false           # Auto-cancel: true = ESC terminates script
+)
+
+if result == 'Yes'
+  # User clicked Yes
+elsif result == 'No'
+  # User clicked No
+elsif result == 'Cancel'
+  # User clicked Cancel or closed dialog
+end
+
+# Multi-line message with newlines
+WSApplication.message_box(
+  "Operation complete!\\n\\nProcessed: #{count} nodes\\nErrors: #{errors}",
+  'OK',
+  'Information',
+  false
+)
+
+# Auto-cancel on escape (4th parameter = true)
+result = WSApplication.message_box(
+  'This is important',
+  'OKCancel',
+  '!',
+  true  # Hitting Cancel terminates script execution immediately
+)
+# If Cancel clicked, script stops here - code below never runs
+
+# Using nil defaults (nil = OKCancel, '!', true)
+result = WSApplication.message_box('Continue?', nil, nil, nil)
+
+# Icon options:
+# '?' = Question mark (blue)
+# '!' = Exclamation (yellow warning)
+# 'Stop' = Red X (critical error)
+# 'Information' = Blue i (info)
+
+# Button return values:
+# 'OK', 'Cancel', 'Yes', 'No'
+```
+
+### PAT_USER_INPUTBOX_058: Get Text Input from User
+**Intent:** Prompt user for single-line text input (UI only)
+**Context:** Get node ID, file name, parameter value
+**Availability:** UI scripts only
+**Returns:** String or nil if cancelled
+
+```ruby
+# Basic input box
+result = WSApplication.input_box(
+  "Enter node ID to process:",  # Prompt text (can use \\n for multiline)
+  'Node Selection',               # Dialog title
+  'MH001'                         # Default/initial value
+)
+
+if result.nil?
+  puts "User cancelled"
+  exit
+end
+
+puts "User entered: #{result}"
+
+# Multi-line prompt with newlines
+value = WSApplication.input_box(
+  "Enter parameters:\\n\\nNode ID: (e.g. MH001)\\nDepth threshold: (mm)",
+  'Input Required',
+  'MH001'
+)
+
+# Validate input
+node_id = WSApplication.input_box('Enter Node ID:', 'Find Node', '')
+if node_id.nil? || node_id.strip.empty?
+  WSApplication.message_box('No node ID entered', 'OK', 'Stop', false)
+  exit
+end
+
+node = net.row_object('hw_node', node_id)
+if node.nil?
+  WSApplication.message_box("Node '#{node_id}' not found", 'OK', 'Stop', false)
+  exit
+end
+
+# Combined workflow - get input then confirm action
+node_id = WSApplication.input_box(
+  'Enter node ID to delete:',
+  'Delete Node',
+  ''
+)
+exit if node_id.nil?
+
+confirm = WSApplication.message_box(
+  "Really delete node #{node_id}?",
+  'YesNo',
+  '?',
+  false
+)
+
+if confirm == 'Yes'
+  # Delete node
+  puts "Deleting node #{node_id}"
+end
+```
+
+**Related:** PAT_USER_INPUT_043 (WSApplication.prompt for multiple typed inputs with validation)
+
+### PAT_EXC_DB_OPEN_052: Open Database in Exchange
+**Intent:** Open standalone or workgroup database in Exchange environment  
+**Context:** Exchange scripts need database access before model object operations  
+**Related:** PAT_APP_ACCESS_001, PAT_UNIVERSAL_MODE_002  
+
+```ruby
+# Standalone database (local .icmm file)
+db = WSApplication.open('D:/Projects/MyModel.icmm', false)  # false = read-only
+
+# Standalone database (read-write)
+db = WSApplication.open('D:/Projects/MyModel.icmm', true)   # true = read-write
+
+# Workgroup database (server:port/database)
+db = WSApplication.open('myserver:40000/ProductionDB', false)
+
+# Workgroup database with version
+db = WSApplication.open('myserver:40000/ProductionDB', '2024.0')
+
+# Workgroup database in group
+db = WSApplication.open('myserver:40000/Projects/ModelDB', false)
+
+# Use model objects after opening
+model_group = db.model_object('>MODG~Scenarios')
+network_mo = db.model_object_from_type_and_id('Model Network', 15)
+```
+
+### PAT_EXC_RUN_SETUP_053: InfoWorks Run Setup with new_run
+**Intent:** Create complete run configuration using new_run method  
+**Context:** Exchange-only method for InfoWorks network runs  
+**Related:** PAT_LAUNCH_SIM_050, PAT_EXC_DB_OPEN_052  
+**Critical:** Must be called on Model Group, not network
+
+```ruby
+# Open database
+db = WSApplication.open('D:/MyModel.icmm', false)
+model_group = db.model_object('>MODG~Production Runs')
+network_mo = db.model_object_from_type_and_id('Model Network', 10)
+# OR: network_id = 10
+# OR: network_path = '>MODG~Networks>NNET~Main Network'
+
+# Single rainfall event, base scenario
+run = model_group.new_run(
+  'Storm 2024-01-15',                    # Name (must be unique in group)
+  network_mo,                             # Network (object, ID, or path)
+  nil,                                    # Commit ID (nil = latest)
+  db.model_object('>MODG~Rainfall>RAIN~Jan15Storm'),  # Rainfall
+  nil,                                    # Scenarios (nil = base)
+  {                                       # Run parameters hash
+    'RunType' => 'Hydraulic',
+    'Duration' => 14400,                  # seconds (4 hours)
+    'Timestep' => 30,                     # seconds
+    'ResultsTimestep' => 300              # seconds (5 min)
+  }
+)
+
+# Multiple rainfall events and scenarios
+rainfalls = [
+  db.model_object_from_type_and_id('Rainfall Event', 5),
+  db.model_object_from_type_and_id('Rainfall Event', 7)
+]
+scenarios = ['Proposed', 'Existing']
+
+run = model_group.new_run(
+  'Multi-Event Analysis',
+  network_mo,
+  nil,
+  rainfalls,                              # Array creates multiple sims
+  scenarios,                              # Array creates sims for each combo
+  {
+    'RunType' => 'Hydraulic',
+    'Duration' => 21600
+  }
+)
+
+# Access created simulations
+run.children.each do |sim|
+  puts "Sim ID: #{sim.id}, Name: #{sim.name}"
+end
+```
+
+### PAT_EXC_RUN_SETUP_SWMM_054: SWMM Run Setup with Builder
+**Intent:** Create SWMM run using WSSWMMRunBuilder  
+**Context:** SWMM networks use builder pattern instead of new_run  
+**Related:** PAT_EXC_RUN_SETUP_053, PAT_LAUNCH_SIM_050  
+
+```ruby
+# Open database and create builder
+db = WSApplication.open('D:/SWMMModel.icmm', false)
+builder = WSSWMMRunBuilder.new
+
+# Create new run in model group
+model_group_id = 5
+builder.create_new_run(model_group_id)
+
+# Configure run properties
+builder['Title'] = 'Design Storm Analysis'
+builder['Network'] = 12                   # Network ID
+builder['NetworkCommitID'] = nil          # nil = latest
+builder['StartDateTime'] = DateTime.new(2024, 1, 15, 0, 0)
+builder['EndDateTime'] = DateTime.new(2024, 1, 15, 12, 0)
+
+# SWMM-specific parameters
+builder['AllowPonding'] = true
+builder['SkipSteadyState'] = true
+builder['ReportStep'] = 300               # seconds
+builder['RoutingStep'] = 30               # seconds
+builder['RainfallEvent'] = 8              # Rainfall event ID
+
+# Save run (returns run model object)
+run_mo = builder.save
+
+puts "Created run ID: #{run_mo.id}"
+
+# Access sim and launch
+sim = run_mo.children[0]
+WSApplication.connect_local_agent(1000)
+sim.run_ex('D:/Results', 1)
+```
+
+### PAT_EXC_ODIC_IMPORT_055: ODIC Import with Error Handling
+**Intent:** Import data with error file logging and validation  
+**Context:** Exchange or UI scripts importing from external sources  
+**Related:** PAT_EXC_ODEC_EXPORT_056  
+
+```ruby
+require 'FileUtils'
+
+# Open network (Exchange) or get current (UI)
+if WSApplication.ui?
+  net = WSApplication.current_network
+else
+  db = WSApplication.open('D:/Model.icmm', true)  # true = read-write
+  net_mo = db.model_object_from_type_and_id('Model Network', 5)
+  net = net_mo.open
+end
+
+# Define imports
+imports = [
+  {table: 'Node', file: 'D:/Data/nodes.csv', display: 'Nodes'},
+  {table: 'Conduit', file: 'D:/Data/conduits.csv', display: 'Conduits'},
+  {table: 'Subcatchment', file: 'D:/Data/subcatchments.csv', display: 'Subcatchments'}
+]
+
+# Import with error tracking
+error_info = []
+
+imports.each do |import_spec|
+  next unless File.exist?(import_spec[:file])
+  
+  error_file = "D:/Temp/import_errors_#{import_spec[:table]}.txt"
+  FileUtils.rm(error_file) if File.exist?(error_file)
+  
+  params = {
+    'Error File' => error_file,
+    'Units Behaviour' => 'User',
+    'Duplication Behaviour' => 'Merge'
+  }
+  
+  net.odic_import_ex('CSV', 'D:/Config/import_config.cfg', params, 
+                     import_spec[:table], import_spec[:file])
+  
+  if File.exist?(error_file) && File.size(error_file) > 0
+    error_info << {file: error_file, table: import_spec[:display]}
+  else
+    FileUtils.rm(error_file) if File.exist?(error_file)
+  end
+end
+
+# Report errors
+if error_info.any?
+  puts "Errors occurred during import:"
+  error_info.each do |err|
+    puts "\n#{err[:table]}:"
+    puts File.read(err[:file])
+  end
+else
+  puts "All imports completed successfully"
+end
+
+# Commit changes (Both — guard Exchange-only cleanup if needed)
+unless WSApplication.ui?
+  net.commit('Imported external data via ODIC')
+  net.close
+end
+```
+
+### PAT_EXC_ODEC_EXPORT_056: ODEC Export Multiple Tables
+**Intent:** Export multiple tables to various formats  
+**Context:** Batch export with consistent configuration  
+**Related:** PAT_EXC_ODIC_IMPORT_055  
+
+```ruby
+# Open network
+if WSApplication.ui?
+  net = WSApplication.current_network
+else
+  db = WSApplication.open('D:/Model.icmm', false)
+  net_mo = db.model_object_from_type_and_id('Model Network', 5)
+  net = net_mo.open
+end
+
+# Export to CSV (2 parameters per table: table name, file path)
+net.odec_export_ex(
+  'CSV',                                    # Format
+  'D:/Config/export_config.cfg',           # Config file
+  {
+    'Units Behaviour' => 'User',
+    'Export Selection' => false,            # false = all objects
+    'Error File' => 'D:/Temp/export_errors.txt'
+  },
+  'Node', 'D:/Exports/nodes.csv',
+  'Conduit', 'D:/Exports/conduits.csv',
+  'Subcatchment', 'D:/Exports/subcatchments.csv'
+)
+
+# Export to Shapefile (2 parameters per table)
+net.odec_export_ex(
+  'SHP',
+  'D:/Config/gis_export.cfg',
+  {'Units Behaviour' => 'User', 'WGS84' => true},
+  'Node', 'D:/GIS/nodes.shp',
+  'Conduit', 'D:/GIS/conduits.shp'
+)
+
+# Export to GeoDatabase (6 parameters per table)
+net.odec_export_ex(
+  'GDB',
+  'D:/Config/gis_export.cfg',
+  {'Units Behaviour' => 'User'},
+  'Node',                                   # Table to export
+  'ManholesFC',                             # Feature class name
+  'SewerAssets',                            # Feature dataset
+  false,                                    # Update (false = create new)
+  nil,                                      # ArcSDE keyword (nil for File GDB)
+  'D:/GIS/SewerModel.gdb'                  # GDB path
+)
+
+puts "Export completed. Check error file if exists."
+```
+
+---
+
+## See Also
+
+- **Database Reference**: `InfoWorks_ICM_Ruby_Database_Reference.md` - Complete table name lookup for InfoWorks and SWMM
+- **Database Fields Guide**: `InfoWorks_ICM_Ruby_Database_Fields_Guide.md` - MCP field lookup workflow
+- **Tutorial Context**: `InfoWorks_ICM_Ruby_Tutorial_Context.md` - Learning guide with complete examples
+
+---
+
+## Quick Tips for LLM Code Generation
+
+1. **Always use transactions** for data modifications (PAT_TRANSACTION_010)
+2. **Check for nil** before accessing properties (PAT_NULL_GUARD_028)
+3. **Mark objects _seen** during tracing to prevent loops (PAT_TRACE_RESET_016)
+4. **Call write()** after modifying properties
+5. **Clear selections** before building new ones (PAT_SELECTION_CLEAR_008)
+6. **Use Set or Hash** for fast membership tests (PAT_FAST_LOOKUP_SET_038)
+7. **Provide progress feedback** for long operations (PAT_PROGRESS_LOG_037)
+8. **Handle errors gracefully** with rescue blocks (PAT_ERROR_WRAP_027)
+9. **Validate field existence** for cross-version scripts (PAT_FIELD_EXISTS_030)
+10. **Use descriptive commit messages** (PAT_COMMIT_MESSAGE_STD_041)
